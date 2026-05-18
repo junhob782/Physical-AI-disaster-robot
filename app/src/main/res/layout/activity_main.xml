@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#121212"
+    android:padding="8dp"
+    tools:ignore="LockedOrientationActivity">
+
+    <LinearLayout
+        android:id="@+id/layout_connection"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/layout_tabs">
+
+        <EditText
+            android:id="@+id/et_ip"
+            android:layout_width="120dp"
+            android:layout_height="wrap_content"
+            android:hint="로봇 IP"
+            android:textColor="@android:color/white"
+            android:textColorHint="#666666"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/et_port"
+            android:layout_width="60dp"
+            android:layout_height="wrap_content"
+            android:hint="포트"
+            android:inputType="number"
+            android:textColor="@android:color/white"
+            android:textColorHint="#666666"
+            android:textSize="14sp"
+            android:layout_marginStart="4dp" />
+
+        <Button
+            android:id="@+id/btn_connect"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="연결"
+            android:layout_marginStart="4dp"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/tv_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="상태: 끊김"
+            android:textColor="#FF0000"
+            android:layout_marginStart="8dp"
+            android:textStyle="bold"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/layout_tabs"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/btn_emergency"
+        android:layout_marginEnd="16dp">
+
+        <Button
+            android:id="@+id/btn_tab_drive"
+            android:layout_width="110dp"
+            android:layout_height="wrap_content"
+            android:text="주행 제어"
+            android:backgroundTint="#333333"
+            android:textColor="@android:color/white"
+            android:layout_marginEnd="4dp" />
+
+        <Button
+            android:id="@+id/btn_tab_arm"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:backgroundTint="#222222"
+            android:text="로봇팔 제어"
+            android:textColor="#888888" />
+    </LinearLayout>
+
+    <Button
+        android:id="@+id/btn_emergency"
+        android:layout_width="120dp"
+        android:layout_height="50dp"
+        android:text="비상 정지"
+        android:backgroundTint="#FF0000"
+        android:textColor="@android:color/white"
+        android:textStyle="bold"
+        android:textSize="16sp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <FrameLayout
+        android:id="@+id/view_container_main"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:background="#1E1E1E"
+        app:layout_constraintTop_toBottomOf="@id/layout_connection"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toStartOf="@id/guideline_vertical">
+
+        <FrameLayout
+            android:id="@+id/layout_drive_map"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="visible">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="🗺️ [실시간 SLAM 지도 표시 영역]"
+                android:textColor="#FFFFFF" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/layout_arm_camera"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="🎥 [Depth 카메라 실시간 스트리밍 영역]"
+                android:textColor="#00FFFF" />
+        </FrameLayout>
+    </FrameLayout>
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideline_vertical"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        app:layout_constraintGuide_percent="0.55" />
+
+    <LinearLayout
+        android:id="@+id/layout_dashboard"
+        android:layout_width="0dp"
+        android:layout_height="85dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginStart="8dp"
+        android:background="#1E1E1E"
+        android:orientation="vertical"
+        android:padding="8dp"
+        app:layout_constraintTop_toBottomOf="@id/btn_emergency"
+        app:layout_constraintStart_toEndOf="@id/guideline_vertical"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="📡 원격 환경 안전 센서 대시보드"
+            android:textColor="#00FF00"
+            android:textStyle="bold"
+            android:textSize="12sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:weightSum="3"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:id="@+id/tv_sensor_gas"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="가스: -- ppm"
+                android:textColor="@android:color/white"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/tv_sensor_temp"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="온도: -- °C"
+                android:textColor="@android:color/white"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/tv_sensor_humidity"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="습도: -- %"
+                android:textColor="@android:color/white"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/view_container_control"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginStart="8dp"
+        android:background="#1E1E1E"
+        app:layout_constraintTop_toBottomOf="@id/layout_dashboard"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toEndOf="@id/guideline_vertical"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <FrameLayout
+            android:id="@+id/layout_control_drive"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="visible">
+
+            <View
+                android:id="@+id/view_joystick_bg"
+                android:layout_width="150dp"
+                android:layout_height="150dp"
+                android:layout_gravity="center"
+                android:background="@android:drawable/presence_invisible"
+                android:backgroundTint="#333333" />
+
+            <View
+                android:id="@+id/view_joystick_stick"
+                android:layout_width="55dp"
+                android:layout_height="55dp"
+                android:layout_gravity="center"
+                android:background="@android:drawable/presence_online"
+                android:backgroundTint="#00FF00" />
+        </FrameLayout>
+
+        <LinearLayout
+            android:id="@+id/layout_control_arm"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:padding="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="어깨 관절 (Joint 1)"
+                android:textColor="@android:color/white"
+                android:textSize="12sp" />
+            <SeekBar
+                android:id="@+id/sb_joint1"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="180"
+                android:progress="90"
+                android:layout_marginTop="4dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="팔꿈치 관절 (Joint 2)"
+                android:textColor="@android:color/white"
+                android:textSize="12sp"
+                android:layout_marginTop="8dp" />
+            <SeekBar
+                android:id="@+id/sb_joint2"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:max="180"
+                android:progress="90"
+                android:layout_marginTop="4dp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="16dp"
+                android:weightSum="2">
+                <Button
+                    android:id="@+id/btn_gripper_open"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="그리퍼 열기"
+                    android:layout_marginEnd="4dp"
+                    android:backgroundTint="#008888"/>
+                <Button
+                    android:id="@+id/btn_gripper_close"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="그리퍼 닫기"
+                    android:backgroundTint="#555555"/>
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
