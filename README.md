@@ -37,6 +37,8 @@
     * MPU6050 (자이로/가속도)
     * MAX30102 (심박수)
 * **통신:** PC-Arduino 간 시리얼 통신 (UART) 및 JSON 직렬화
+* **라이브러리 :** ArduinoJson
+
 
 ---
 
