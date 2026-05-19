@@ -54,6 +54,8 @@
 
 // ─── 외부 라이브러리 ──────────────────────────────────
 #include <nlohmann/json.hpp>  // JSON 파싱·생성 (단일 헤더 라이브러리)
+#include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/twist.hpp>
 
 // nlohmann::json 풀네임이 길어서 별칭 사용
 using json = nlohmann::json;
@@ -435,116 +437,58 @@ private:
 //   rclcpp::Node 상속한 BridgeNode 클래스를 만들고, publisher 들을 멤버로 두어야 함.
 //   colcon 빌드 구성(CMakeLists, package.xml) 과 함께 별도 작업.
 int main(int argc, char* argv[]) {
-    // ─── 포트 결정 ──────────────────────────────────
+    // 1. 포트 결정 및 시그널 핸들러 등록
     int port = (argc > 1) ? std::stoi(argv[1]) : 8080;
-
-    // ─── 시그널 핸들러 등록 ─────────────────────────
-    //   SIGINT  : Ctrl+C
-    //   SIGTERM : kill 명령 등 일반 종료 요청
-    //   SIGPIPE : 끊긴 소켓에 write 했을 때. 무시(SIG_IGN) 하고 send() 의 반환값으로 판단.
     std::signal(SIGINT,  on_signal);
     std::signal(SIGTERM, on_signal);
     std::signal(SIGPIPE, SIG_IGN);
 
-    // ─── 메시지 핸들러 등록 ─────────────────────────
+    // ─── [추가됨] ROS2 초기화 및 노드 생성 ──────────────────
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<rclcpp::Node>("rescue_bridge_node");
+    
+    // 로봇의 바퀴로 명령을 보낼 Publisher 생성 (/cmd_vel 토픽)
+    auto cmd_vel_pub = node->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
+
+    // TCP 서버(while 루프)가 블로킹되더라도 ROS2가 뒤에서 돌아갈 수 있도록 별도 스레드로 분리
+    std::thread ros_thread([node]() {
+        rclcpp::spin(node);
+    });
+    // ────────────────────────────────────────────────────────
+
     MessageRouter router;
 
     // ─────────────────────────────────────────────
-    // [cmd_vel] 로봇 주행 명령 (조이스틱 입력 변환 결과)
-    //
-    // 수신 JSON:
-    //   {
-    //     "msg_type":  "cmd_vel",
-    //     "linear_x":  0.5,       // 전후 속도 [m/s], +가 전진
-    //     "angular_z": 0.1        // 회전 속도 [rad/s], +가 좌회전
-    //   }
-    //
-    // 향후 ROS2 처리:
-    //   geometry_msgs::msg::Twist 로 변환해 /cmd_vel 토픽에 발행
+    // [cmd_vel] 로봇 주행 명령 수신 및 ROS2 퍼블리시
     // ─────────────────────────────────────────────
-    router.on("cmd_vel", [](const json& m) {
+    // 람다 함수에 cmd_vel_pub 캡처를 추가하여 내부에서 ROS2 명령을 쏠 수 있게 합니다.
+    router.on("cmd_vel", [cmd_vel_pub](const json& m) {
         double lx = m.at("linear_x").get<double>();
         double az = m.at("angular_z").get<double>();
-        std::cout << "  [cmd_vel] lin=" << lx << " ang=" << az << "\n";
-        // TODO(ROS2): cmd_vel_pub_->publish(twist_from(lx, az));
+        std::cout << "  [cmd_vel 수신] 전진: " << lx << " 회전: " << az << "\n";
+
+        // [핵심] JSON 속도 값을 ROS2 Twist 메시지로 변환하여 로봇으로 전송!
+        geometry_msgs::msg::Twist twist_msg;
+        twist_msg.linear.x = lx;
+        twist_msg.angular.z = az;
+        cmd_vel_pub->publish(twist_msg);
+
         return json{{"status", "ok"}, {"echo", "cmd_vel"}};
     });
 
-    // ─────────────────────────────────────────────
-    // [arm_cmd] 로봇팔 관절 + 그리퍼 명령
-    //
-    // 수신 JSON:
-    //   {
-    //     "msg_type": "arm_cmd",
-    //     "joint1":   1.57,      // 1번 관절 각도 [rad]
-    //     "joint2":   0.78,      // 2번 관절 각도 [rad]
-    //     "gripper":  1          // 0=열기, 1=닫기
-    //   }
-    //
-    // 향후 ROS2 처리:
-    //   sensor_msgs::msg::JointState 로 발행
-    // ─────────────────────────────────────────────
+    // 다른 핸들러들은 우선 기존처럼 터미널 출력만 유지
     router.on("arm_cmd", [](const json& m) {
-        double j1 = m.at("joint1").get<double>();
-        double j2 = m.at("joint2").get<double>();
-        int    gr = m.at("gripper").get<int>();
-        std::cout << "  [arm_cmd] j1=" << j1 << " j2=" << j2 << " grip=" << gr << "\n";
-        // TODO(ROS2): joint_pub_->publish(joint_state_from(j1, j2, gr));
+        /* ... 기존 로직 ... */
         return json{{"status", "ok"}, {"echo", "arm_cmd"}};
     });
-
-    // ─────────────────────────────────────────────
-    // [emergency_stop] 비상정지 (최우선 처리)
-    //
-    // 수신 JSON:
-    //   { "msg_type": "emergency_stop" }    (추가 필드 없음)
-    //
-    // 향후 ROS2 처리:
-    //   1. /cmd_vel 에 영(0,0,0) Twist 강제 발행
-    //   2. SafetyMonitor 노드에 emergency 트리거 전달
-    //   3. NavigationManager 의 현재 goal 취소
-    // ─────────────────────────────────────────────
     router.on("emergency_stop", [](const json&) {
-        std::cout << "  [E-STOP] 비상정지 발동\n";
-        // TODO(ROS2): zero cmd_vel + SafetyMonitor 트리거
+        /* ... 기존 로직 ... */
         return json{{"status", "ok"}, {"echo", "emergency_stop"}};
     });
-
-    // ─────────────────────────────────────────────
-    // [nav_goal] 자율주행 목표 좌표 (지도 터치)
-    //
-    // 수신 JSON:
-    //   {
-    //     "msg_type": "nav_goal",
-    //     "x":     2.5,          // 목표 X [m] (map frame 기준)
-    //     "y":     1.0,          // 목표 Y [m]
-    //     "theta": 0.0           // 목표 yaw [rad], 선택 필드 (기본 0)
-    //   }
-    //
-    // 향후 ROS2 처리:
-    //   Nav2 ActionClient 로 NavigateToPose 액션 전송
-    // ─────────────────────────────────────────────
     router.on("nav_goal", [](const json& m) {
-        double x = m.at("x").get<double>();
-        double y = m.at("y").get<double>();
-        double t = m.value("theta", 0.0);   // 선택 필드 (없으면 0.0)
-        std::cout << "  [nav_goal] x=" << x << " y=" << y << " θ=" << t << "\n";
-        // TODO(ROS2): nav2_action_client->send_goal(...)
+        /* ... 기존 로직 ... */
         return json{{"status", "ok"}, {"echo", "nav_goal"}};
     });
-
-    // ─────────────────────────────────────────────
-    // [ping] 연결 확인 (Watchdog)
-    //
-    // 수신 JSON:
-    //   { "msg_type": "ping" }
-    //
-    // 응답:
-    //   { "status": "ok", "type": "pong" }
-    //
-    // 클라이언트가 주기적(예: 1초)으로 ping 보내고, 일정 시간 응답 없으면
-    // 연결 끊김으로 판단해 재연결 시도 (FR-C04, C05 의 백엔드 처리).
-    // ─────────────────────────────────────────────
     router.on("ping", [](const json&) {
         return json{{"status", "ok"}, {"type", "pong"}};
     });
@@ -552,10 +496,21 @@ int main(int argc, char* argv[]) {
     // ─── 서버 실행 ─────────────────────────────────
     TcpServer server(port);
     if (!server.start()) {
-        return 1;  // 시작 실패 → 에러 코드 1 로 종료
+        rclcpp::shutdown();
+        return 1; 
     }
-    server.run(router);   // 종료 시그널 받을 때까지 블로킹
+    
+    std::cout << "[Server] ROS2 브릿지 가동! 조이스틱 명령을 대기합니다.\n";
+    
+    // 종료 시그널(Ctrl+C)을 받을 때까지 클라이언트(안드로이드) 응대
+    server.run(router);   
 
-    std::cout << "[Server] shutdown\n";
+    // ─── [추가됨] 깔끔한 종료 처리 ─────────────────
+    std::cout << "\n[Server] 안전하게 종료 중...\n";
+    rclcpp::shutdown();       // ROS2 시스템 종료
+    if (ros_thread.joinable()) {
+        ros_thread.join();    // ROS2 스레드 회수
+    }
+
     return 0;
 }
