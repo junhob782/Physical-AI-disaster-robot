@@ -1,13 +1,96 @@
 import cv2
-import time
+import json
 import signal
 import sys
+import threading
+import time
 from collections import deque
 
 import config
 from camera import open_camera
 from detector import PersonDetector
 from server import FrameServer
+
+try:
+    import rclpy
+    from rclpy.node import Node
+    from std_msgs.msg import String
+except Exception:
+    rclpy = None
+    Node = object
+    String = None
+
+
+SENSOR_TOPIC = "/sensor_data"
+
+
+class SensorSubscriber(Node):
+    def __init__(self):
+        super().__init__("vision_sensor_subscriber")
+        self._latest = None
+        self._lock = threading.Lock()
+        self.create_subscription(String, SENSOR_TOPIC, self._on_sensor_data, 10)
+
+    def _on_sensor_data(self, msg):
+        try:
+            data = json.loads(msg.data)
+        except json.JSONDecodeError:
+            data = {"raw": msg.data}
+
+        with self._lock:
+            self._latest = data
+
+    def latest(self):
+        with self._lock:
+            return self._latest
+
+
+class SensorBridge:
+    def __init__(self):
+        self.node = None
+        self.thread = None
+        self.enabled = False
+
+    def start(self):
+        if rclpy is None:
+            print("[sensor] ROS2 rclpy not available. sensor_data disabled.")
+            return
+
+        rclpy.init(args=None)
+        self.node = SensorSubscriber()
+        self.thread = threading.Thread(target=rclpy.spin, args=(self.node,), daemon=True)
+        self.thread.start()
+        self.enabled = True
+        print(f"[sensor] subscribing to {SENSOR_TOPIC}")
+
+    def latest(self):
+        if not self.enabled or self.node is None:
+            return None
+        return self.node.latest()
+
+    def stop(self):
+        if not self.enabled:
+            return
+        if self.node is not None:
+            self.node.destroy_node()
+        rclpy.shutdown()
+        print("[sensor] stopped")
+
+
+def draw_sensor_overlay(color, sensor_data):
+    if not sensor_data:
+        return
+
+    sensor_text = json.dumps(sensor_data, ensure_ascii=False)[:80]
+    cv2.putText(
+        color,
+        f"sensor: {sensor_text}",
+        (10, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (0, 255, 255),
+        2,
+    )
 
 
 def main():
@@ -26,15 +109,19 @@ def main():
     srv = FrameServer(config.TCP_HOST, config.TCP_PORT)
     srv.start()
 
-    # Ctrl+C로 깔끔히 종료할 수 있도록
+    sensor_bridge = SensorBridge()
+    sensor_bridge.start()
+
     stop_flag = {"v": False}
+
     def on_sigint(sig, frame):
         stop_flag["v"] = True
+
     signal.signal(signal.SIGINT, on_sigint)
 
     fps_window = deque(maxlen=30)
     frame_id = 0
-    print("[main] running. ESC 또는 'q' 키로 종료.")
+    print("[main] running. ESC or 'q' to quit.")
 
     try:
         while not stop_flag["v"]:
@@ -45,11 +132,16 @@ def main():
                 continue
 
             boxes = det.detect(color, depth_mm=depth)
-
-            # 박스 그리기 (color 이미지에 직접 그림)
             det.draw(color, boxes)
 
-            # JPEG 인코딩
+            dt = time.perf_counter() - t0
+            fps_window.append(1.0 / max(dt, 1e-6))
+            fps_avg = sum(fps_window) / len(fps_window)
+
+            alert = any(b["conf"] >= config.ALERT_MIN_CONF for b in boxes)
+            sensor_data = sensor_bridge.latest()
+            draw_sensor_overlay(color, sensor_data)
+
             ok, jpeg = cv2.imencode(
                 ".jpg",
                 color,
@@ -58,15 +150,6 @@ def main():
             if not ok:
                 continue
 
-            # FPS 계산 (이동평균)
-            dt = time.perf_counter() - t0
-            fps_window.append(1.0 / max(dt, 1e-6))
-            fps_avg = sum(fps_window) / len(fps_window)
-
-            # 알림 판정
-            alert = any(b["conf"] >= config.ALERT_MIN_CONF for b in boxes)
-
-            # 메타데이터 구성
             meta = {
                 "ts": int(time.time() * 1000),
                 "frame_id": frame_id,
@@ -74,34 +157,35 @@ def main():
                 "n_person": len(boxes),
                 "alert": alert,
                 "boxes": boxes,
+                "sensor": sensor_data,
                 "img_w": color.shape[1],
                 "img_h": color.shape[0],
             }
 
-            # 전송
             srv.broadcast(jpeg.tobytes(), meta)
             frame_id += 1
 
-            # 로컬 프리뷰
             cv2.imshow("LifeRover Preview (q=quit)", color)
             key = cv2.waitKey(1)
-            # waitKey는 키 안 눌리면 -1 반환. & 0xFF 하면 255가 되어버려서
-            # 우연한 키 해석 위험이 있음. -1 체크를 먼저.
             if key != -1:
                 key &= 0xFF
-                if key == ord('q') or key == 27:
-                    print(f"[main] 종료 키 감지: {key}")
+                if key == ord("q") or key == 27:
+                    print(f"[main] quit key detected: {key}")
                     break
 
-            # 디버그: 100프레임마다 상태 출력
             if frame_id % 100 == 0 and frame_id > 0:
-                print(f"[main] frame {frame_id}, fps={fps_avg:.1f}, clients={srv.n_clients()}")
+                print(
+                    f"[main] frame {frame_id}, fps={fps_avg:.1f}, "
+                    f"clients={srv.n_clients()}, sensor={sensor_data is not None}"
+                )
 
     except Exception as e:
         print(f"[main] error: {e}", file=sys.stderr)
         import traceback
+
         traceback.print_exc()
     finally:
+        sensor_bridge.stop()
         srv.stop()
         cam.release()
         cv2.destroyAllWindows()
