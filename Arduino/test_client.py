@@ -27,7 +27,7 @@ def main(host="127.0.0.1", port=9999):
     frame_count = 0
     try:
         while True:
-            # 1) 헤더 4바이트: 전체 페이로드 길이
+            # 1) 헤더 4바이트
             header = recv_exact(sock, 4)
             total_len = struct.unpack(">I", header)[0]
 
@@ -49,7 +49,7 @@ def main(host="127.0.0.1", port=9999):
                 continue
 
             frame_count += 1
-            # 10프레임마다 메타 출력 (너무 자주 찍히면 어지러움)
+            # 10프레임마다 메타 출력
             if frame_count % 10 == 0:
                 print(
                     f"[client] frame {meta['frame_id']}: "
